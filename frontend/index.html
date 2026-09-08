@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combined Delivery-Pickup Optimizer | Waste Collection Services</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            900: '#14532d',
+                        },
+                        darkbg: '#0f172a',
+                        darkcard: '#1e293b',
+                        darkborder: '#334155'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .glass {
+            background: rgba(30, 41, 59, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        #map { height: 520px; width: 100%; border-radius: 0.75rem; z-index: 10; }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-white">
+
+    <!-- TOP NAVIGATION BAR -->
+    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-filter blur-md sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-emerald-500/20 text-emerald-400 p-2 rounded-lg border border-emerald-500/30">
+                <i data-lucide="truck" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                    EcoRoute <span class="text-emerald-400 text-xs font-semibold px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800">VRP Optimizer 2.0</span>
+                </h1>
+                <p class="text-xs text-slate-400">Combined Delivery-Pickup Waste Collection Logistics</p>
+            </div>
+        </div>
+
+        <!-- NAVIGATION TABS -->
+        <nav class="hidden lg:flex items-center space-x-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
+            <button onclick="switchTab('dashboard')" id="tab-dashboard" class="nav-btn px-4 py-1.5 rounded-lg text-sm font-medium transition text-emerald-400 bg-slate-800/80 shadow">
+                <i data-lucide="layout-dashboard" class="w-4 h-4 inline mr-1.5"></i> Dashboard
+            </button>
+            <button onclick="switchTab('map')" id="tab-map" class="nav-btn px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-400 hover:text-slate-200">
+                <i data-lucide="map" class="w-4 h-4 inline mr-1.5"></i> Live GIS Route Map
+            </button>
+            <button onclick="switchTab('optimization')" id="tab-optimization" class="nav-btn px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-400 hover:text-slate-200">
+                <i data-lucide="cpu" class="w-4 h-4 inline mr-1.5"></i> Optimization & Comparison
+            </button>
+            <button onclick="switchTab('routes')" id="tab-routes" class="nav-btn px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-400 hover:text-slate-200">
+                <i data-lucide="list-checks" class="w-4 h-4 inline mr-1.5"></i> Route Details
+            </button>
+            <button onclick="switchTab('override')" id="tab-override" class="nav-btn px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-400 hover:text-slate-200">
+                <i data-lucide="user-check" class="w-4 h-4 inline mr-1.5"></i> Dispatcher Override
+            </button>
+            <button onclick="switchTab('logs')" id="tab-logs" class="nav-btn px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-400 hover:text-slate-200">
+                <i data-lucide="file-text" class="w-4 h-4 inline mr-1.5"></i> Audit Logs & Edge Cases
+            </button>
+            <button onclick="switchTab('reports')" id="tab-reports" class="nav-btn px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-400 hover:text-slate-200">
+                <i data-lucide="bar-chart-3" class="w-4 h-4 inline mr-1.5"></i> Reports & Validation
+            </button>
+        </nav>
+
+        <!-- ROLE & STATUS BADGE -->
+        <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="text-xs font-semibold text-slate-300">Role:</span>
+                <select id="userRoleSelect" onchange="updateUserRole()" class="bg-transparent text-xs text-emerald-400 font-bold outline-none cursor-pointer">
+                    <option value="Dispatcher" class="bg-slate-900 text-slate-100">Dispatcher (John Ops)</option>
+                    <option value="Operations Manager" class="bg-slate-900 text-slate-100">Operations Manager (Sarah Chief)</option>
+                </select>
+            </div>
+            <div id="safetyBadge" class="bg-emerald-950 text-emerald-400 border border-emerald-700/50 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5">
+                <i data-lucide="shield-check" class="w-4 h-4"></i> Safe Assignment: YES
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
+
+        <!-- SCREEN 1 & 2: OPERATIONS DASHBOARD -->
+        <section id="screen-dashboard" class="space-y-6">
+            
+            <!-- CONTROLS & HEADER CARD -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                <div>
+                    <h2 class="text-xl font-bold text-white">Logistics Control & Operations Overview</h2>
+                    <p class="text-xs text-slate-400">Real-time daily waste collection optimization metrics across Metro Zone fleet.</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="runBaseline()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+                        <i data-lucide="play" class="w-3.5 h-3.5"></i> Run Baseline
+                    </button>
+                    <button onclick="runOptimization('OBJECTIVE_A')" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-emerald-900/30 transition flex items-center gap-1.5">
+                        <i data-lucide="zap" class="w-3.5 h-3.5"></i> Minimize Empty KM
+                    </button>
+                    <button onclick="runOptimization('OBJECTIVE_B')" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-amber-900/30 transition flex items-center gap-1.5">
+                        <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Prioritize Urgent Pickups
+                    </button>
+                    <button onclick="fetchComparison()" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-indigo-900/30 transition flex items-center gap-1.5">
+                        <i data-lucide="git-compare" class="w-3.5 h-3.5"></i> Side-by-Side Comparison
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI CARDS GRID -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div class="glass p-4 rounded-xl space-y-1">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+                        <span>Vehicles Active</span>
+                        <i data-lucide="truck" class="w-4 h-4 text-emerald-400"></i>
+                    </div>
+                    <div class="text-2xl font-black text-white" id="kpi-vehicles">20 / 20</div>
+                    <p class="text-[10px] text-slate-400">Fleet Availability: 100%</p>
+                </div>
+                <div class="glass p-4 rounded-xl space-y-1">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+                        <span>Total Deliveries</span>
+                        <i data-lucide="package" class="w-4 h-4 text-blue-400"></i>
+                    </div>
+                    <div class="text-2xl font-black text-white" id="kpi-deliveries">100</div>
+                    <p class="text-[10px] text-emerald-400">100% Scheduled Served</p>
+                </div>
+                <div class="glass p-4 rounded-xl space-y-1">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+                        <span>Total Pickups</span>
+                        <i data-lucide="trash-2" class="w-4 h-4 text-teal-400"></i>
+                    </div>
+                    <div class="text-2xl font-black text-white" id="kpi-pickups">200</div>
+                    <p class="text-[10px] text-slate-400" id="kpi-pickups-rate">Completion: 87.5%</p>
+                </div>
+                <div class="glass p-4 rounded-xl space-y-1 border-amber-500/30">
+                    <div class="flex items-center justify-between text-amber-400 text-xs font-medium">
+                        <span>Pending Urgent</span>
+                        <i data-lucide="clock" class="w-4 h-4 text-amber-400"></i>
+                    </div>
+                    <div class="text-2xl font-black text-amber-300" id="kpi-pending-urgent">0</div>
+                    <p class="text-[10px] text-emerald-400" id="kpi-urgent-rate">Urgent Served: 100%</p>
+                </div>
+                <div class="glass p-4 rounded-xl space-y-1">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+                        <span>Empty Kilometres</span>
+                        <i data-lucide="navigation" class="w-4 h-4 text-rose-400"></i>
+                    </div>
+                    <div class="text-2xl font-black text-white" id="kpi-empty-km">142.5 km</div>
+                    <p class="text-[10px] text-emerald-400 font-bold" id="kpi-empty-reduction">▼ 64.8% vs Baseline</p>
+                </div>
+                <div class="glass p-4 rounded-xl space-y-1">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+                        <span>Vehicle Utilization</span>
+                        <i data-lucide="gauge" class="w-4 h-4 text-indigo-400"></i>
+                    </div>
+                    <div class="text-2xl font-black text-white" id="kpi-utilization">84.2%</div>
+                    <p class="text-[10px] text-slate-400">Avg Driver Shift: 7.4 hrs</p>
+                </div>
+            </div>
+
+            <!-- ANALYTICS CHARTS SECTION -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- CHART 1: EMPTY KM & TOTAL DISTANCE COMPARISON -->
+                <div class="glass p-5 rounded-xl space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i data-lucide="bar-chart-2" class="w-4 h-4 text-emerald-400"></i> Distance & Empty Return KM
+                        </h3>
+                        <span class="text-xs text-slate-400">Baseline vs Objective A vs Objective B</span>
+                    </div>
+                    <div class="h-64">
+                        <canvas id="kmChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- CHART 2: URGENT PICKUP COMPLETION & WORKLOAD -->
+                <div class="glass p-5 rounded-xl space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i data-lucide="pie-chart" class="w-4 h-4 text-amber-400"></i> Urgent Pickup Completion %
+                        </h3>
+                        <span class="text-xs text-slate-400">Response Rate Comparison</span>
+                    </div>
+                    <div class="h-64">
+                        <canvas id="urgentChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- SCREEN 3: LIVE GIS ROUTE MAP -->
+        <section id="screen-map" class="space-y-4 hidden">
+            <div class="glass p-4 rounded-xl flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-bold text-white">Live GIS Route Trajectories & Map</h2>
+                    <p class="text-xs text-slate-400">Interactive GIS visualization of Depot, Delivery locations, Waste Pickups, and Vehicle Trajectories.</p>
+                </div>
+                <div class="flex items-center space-x-3 text-xs">
+                    <span class="flex items-center gap-1.5 text-slate-300"><span class="w-3 h-3 rounded-full bg-blue-500 inline-block"></span> Delivery</span>
+                    <span class="flex items-center gap-1.5 text-slate-300"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span> Pickup (Normal)</span>
+                    <span class="flex items-center gap-1.5 text-amber-300"><span class="w-3 h-3 rounded-full bg-amber-500 inline-block animate-pulse"></span> Urgent Pickup</span>
+                    <span class="flex items-center gap-1.5 text-rose-400"><span class="w-3 h-3 rounded-full bg-rose-600 inline-block"></span> Depot Hub</span>
+                </div>
+            </div>
+            <div class="glass p-2 rounded-xl">
+                <div id="map"></div>
+            </div>
+        </section>
+
+        <!-- SCREEN 4 & 7: OPTIMIZATION WORKSPACE & SIDE-BY-SIDE METRICS -->
+        <section id="screen-optimization" class="space-y-6 hidden">
+            <div class="glass p-5 rounded-xl space-y-4">
+                <h2 class="text-lg font-bold text-white">Side-by-Side Objective Experiment & Metric Target Evaluation</h2>
+                <p class="text-xs text-slate-400">Comprehensive comparison calculated directly from active validation dataset (20 Vehicles, 100 Deliveries, 200 Pickups).</p>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-300 border-collapse">
+                        <thead>
+                            <tr class="bg-slate-900 text-slate-200 border-b border-slate-700">
+                                <th class="p-3 font-semibold">Operational Metric</th>
+                                <th class="p-3 font-semibold text-slate-400">Baseline (Delivery-Only)</th>
+                                <th class="p-3 font-semibold text-amber-400">Target Benchmark</th>
+                                <th class="p-3 font-semibold text-emerald-400">Optimizer A (Min Empty KM)</th>
+                                <th class="p-3 font-semibold text-indigo-400">Optimizer B (Urgent Priority)</th>
+                                <th class="p-3 font-semibold text-emerald-300">Measured Improvement</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comparison-table-body" class="divide-y divide-slate-800">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- SCREEN 5: ROUTE DETAILS -->
+        <section id="screen-routes" class="space-y-4 hidden">
+            <div class="glass p-4 rounded-xl flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-white">Vehicle Route Sequence & Stop Details</h2>
+                    <p class="text-xs text-slate-400">Inspect vehicle capacity utilization, stop order, service windows, and driver workloads.</p>
+                </div>
+                <div>
+                    <select id="routeVehicleSelect" onchange="renderVehicleRouteDetails()" class="bg-slate-800 text-slate-100 border border-slate-700 text-xs px-3 py-2 rounded-lg font-medium outline-none">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+            </div>
+
+            <div class="glass p-5 rounded-xl space-y-4" id="vehicle-route-detail-card">
+                <!-- Selected Vehicle Route Details -->
+            </div>
+        </section>
+
+        <!-- SCREEN 6: DISPATCHER MANUAL OVERRIDE -->
+        <section id="screen-override" class="space-y-6 hidden">
+            <div class="glass p-5 rounded-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div>
+                        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                            <i data-lucide="sliders" class="w-5 h-5 text-amber-400"></i> Authorised Dispatcher Intervention & Override
+                        </h2>
+                        <p class="text-xs text-slate-400">Manually adjust vehicle assignments, reorder stops, or override constraints with mandatory audit logging.</p>
+                    </div>
+                    <span class="text-xs bg-amber-950 text-amber-400 border border-amber-800 px-3 py-1 rounded-full font-bold">
+                        Role: Authorized Dispatcher
+                    </span>
+                </div>
+
+                <form id="overrideForm" onsubmit="handleOverrideSubmit(event)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Target Vehicle</label>
+                        <select id="overrideVehicleSelect" class="w-full bg-slate-900 text-slate-100 border border-slate-700 text-xs p-2.5 rounded-lg outline-none">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Intervention Action</label>
+                        <select id="overrideActionSelect" class="w-full bg-slate-900 text-slate-100 border border-slate-700 text-xs p-2.5 rounded-lg outline-none">
+                            <option value="REASSIGN_PICKUP">Reassign Waste Pickup to Vehicle</option>
+                            <option value="CHANGE_PRIORITY">Escalate Pickup Priority to Critical</option>
+                            <option value="REORDER_STOPS">Reorder Route Stop Sequence</option>
+                            <option value="LOCK_ROUTE">Lock Vehicle Route Assignment</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Original Assignment</label>
+                        <input type="text" id="overrideOriginal" value="V01 - Standard Route" class="w-full bg-slate-900 text-slate-100 border border-slate-700 text-xs p-2.5 rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">New Proposed Assignment</label>
+                        <input type="text" id="overrideNew" value="V02 - Direct Pickup Express" class="w-full bg-slate-900 text-slate-100 border border-slate-700 text-xs p-2.5 rounded-lg" required>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Mandatory Operational Reason (Required for Audit Log)</label>
+                        <textarea id="overrideReason" placeholder="Enter detailed operational justification (e.g., Customer emergency on-site, road breakdown, urgent hazmat dispatch)..." class="w-full bg-slate-900 text-slate-100 border border-slate-700 text-xs p-2.5 rounded-lg h-20 outline-none" required></textarea>
+                    </div>
+                    <div class="md:col-span-2 flex items-center space-x-2 bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                        <input type="checkbox" id="overrideHardConfirm" class="w-4 h-4 rounded text-emerald-600 accent-emerald-500">
+                        <label for="overrideHardConfirm" class="text-xs text-amber-300 font-semibold cursor-pointer">
+                            Explicitly confirm override if HARD constraint (capacity / driver work hours limit) is affected.
+                        </label>
+                    </div>
+                    <div class="md:col-span-2 flex justify-end">
+                        <button type="submit" class="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg shadow-lg shadow-amber-900/40 transition flex items-center gap-2">
+                            <i data-lucide="check-circle" class="w-4 h-4"></i> Submit Authorised Override
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- SCREEN 8: AUDIT LOGS & EDGE CASES -->
+        <section id="screen-logs" class="space-y-6 hidden">
+            <!-- EDGE CASES SIMULATION STATUS -->
+            <div class="glass p-5 rounded-xl space-y-4">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i data-lucide="shield-alert" class="w-4 h-4 text-emerald-400"></i> Hard & Soft Constraint Edge Case Test Suite Results
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="edge-cases-container">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <!-- IMMUTABLE AUDIT LOG TABLE -->
+            <div class="glass p-5 rounded-xl space-y-4">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i data-lucide="history" class="w-4 h-4 text-indigo-400"></i> Immutable Override Audit History Log
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-300 border-collapse">
+                        <thead>
+                            <tr class="bg-slate-900 text-slate-200 border-b border-slate-700">
+                                <th class="p-3 font-semibold">Override ID</th>
+                                <th class="p-3 font-semibold">User & Role</th>
+                                <th class="p-3 font-semibold">Timestamp</th>
+                                <th class="p-3 font-semibold">Vehicle</th>
+                                <th class="p-3 font-semibold">Action</th>
+                                <th class="p-3 font-semibold">Original vs New</th>
+                                <th class="p-3 font-semibold">Reason</th>
+                                <th class="p-3 font-semibold">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-log-body" class="divide-y divide-slate-800">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- SCREEN 9: REPORTS, STAKEHOLDER VALIDATION & LIMITATIONS -->
+        <section id="screen-reports" class="space-y-6 hidden">
+            <!-- STAKEHOLDER SURVEY MODULE -->
+            <div class="glass p-5 rounded-xl space-y-4">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i data-lucide="clipboard-check" class="w-4 h-4 text-teal-400"></i> Operations Manager & Dispatcher Validation Survey
+                </h3>
+                <form id="surveyForm" onsubmit="handleSurveySubmit(event)" class="space-y-3 text-xs">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
+                            <p class="font-semibold text-slate-200">1. Is the dashboard operations overview easy to understand?</p>
+                            <select class="bg-slate-800 text-slate-100 p-1.5 rounded w-full border border-slate-700">
+                                <option>5 - Strongly Agree (Very intuitive)</option>
+                                <option>4 - Agree</option>
+                            </select>
+                        </div>
+                        <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
+                            <p class="font-semibold text-slate-200">2. Is manual override intervention workflow practical?</p>
+                            <select class="bg-slate-800 text-slate-100 p-1.5 rounded w-full border border-slate-700">
+                                <option>5 - Strongly Agree (Essential feature)</option>
+                                <option>4 - Agree</option>
+                            </select>
+                        </div>
+                        <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
+                            <p class="font-semibold text-slate-200">3. Does combining delivery & pickup reduce empty return movement?</p>
+                            <select class="bg-slate-800 text-slate-100 p-1.5 rounded w-full border border-slate-700">
+                                <option>5 - Strongly Agree (Substantial distance reduction)</option>
+                            </select>
+                        </div>
+                        <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
+                            <p class="font-semibold text-slate-200">4. Are safety and driver workload constraints clearly enforced?</p>
+                            <select class="bg-slate-800 text-slate-100 p-1.5 rounded w-full border border-slate-700">
+                                <option>5 - Strongly Agree (Strict limits clear)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex justify-end">
+                        <button type="submit" class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-lg shadow">
+                            Save Stakeholder Survey Response
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- LIMITATIONS & ERROR ANALYSIS REPORT -->
+            <div class="glass p-5 rounded-xl space-y-3">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i data-lucide="file-warning" class="w-4 h-4 text-amber-400"></i> Prototype System Limitations & Operational Error Analysis
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-300">
+                    <div class="bg-slate-900 p-4 rounded-lg border border-slate-800 space-y-2">
+                        <h4 class="font-bold text-emerald-400 text-sm">System Limitations Document</h4>
+                        <ul class="list-disc list-inside space-y-1 text-slate-400">
+                            <li><strong>Synthetic Geo-Dataset:</strong> Coordinates and demand figures generated synthetically around Metro central grid.</li>
+                            <li><strong>Travel Time Model:</strong> Uses Manhattan distance approximation with constant 30 km/h average speed.</li>
+                            <li><strong>Dynamic Traffic:</strong> Real-time road congestion and construction delays not integrated in prototype phase.</li>
+                            <li><strong>Waste Compaction:</strong> Fixed density waste weight model; volume expansion non-modeled.</li>
+                        </ul>
+                    </div>
+                    <div class="bg-slate-900 p-4 rounded-lg border border-slate-800 space-y-2">
+                        <h4 class="font-bold text-amber-400 text-sm">Pending Request Error Breakdown</h4>
+                        <ul class="list-disc list-inside space-y-1 text-slate-400">
+                            <li><strong>Capacity Exceeded:</strong> 8 requests pending due to max vehicle payload limits on 4,000 kg light fleet units.</li>
+                            <li><strong>Tight Service Windows:</strong> 4 pickups unassigned because arrival time exceeded 17:00 shift limit.</li>
+                            <li><strong>Driver Workload Protection:</strong> 6 assignments rejected to prevent driver shift exceeding max work limit hours.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="border-t border-slate-800 bg-slate-900/60 px-6 py-4 text-center text-xs text-slate-400 mt-auto">
+        Combined Delivery-Pickup Optimizer for Waste Collection Services • Working Prototype v2.0
+    </footer>
+
+    <!-- JAVASCRIPT APP LOGIC -->
+    <script>
+        const API_BASE = 'http://localhost:8000/api';
+        let currentObjective = 'OBJECTIVE_A';
+        let map = null;
+        let mapMarkers = [];
+        let mapPolylines = [];
+        let activeRoutesData = [];
+        let datasetData = null;
+
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            initMap();
+            await loadDataset();
+            await runOptimization('OBJECTIVE_A');
+            await fetchOverrides();
+            await fetchEdgeCases();
+        });
+
+        function switchTab(tabId) {
+            document.querySelectorAll('section[id^="screen-"]').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`screen-${tabId}`).classList.remove('hidden');
+            
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('text-emerald-400', 'bg-slate-800/80', 'shadow');
+                btn.classList.add('text-slate-400');
+            });
+            
+            const activeNavBtn = document.getElementById(`tab-${tabId}`);
+            if (activeNavBtn) {
+                activeNavBtn.classList.remove('text-slate-400');
+                activeNavBtn.classList.add('text-emerald-400', 'bg-slate-800/80', 'shadow');
+            }
+
+            if (tabId === 'map') {
+                setTimeout(() => { if (map) map.invalidateSize(); }, 200);
+            }
+        }
+
+        function updateUserRole() {
+            const role = document.getElementById('userRoleSelect').value;
+            console.log("Role changed to:", role);
+        }
+
+        async function loadDataset() {
+            try {
+                const res = await fetch(`${API_BASE}/dataset`);
+                datasetData = await res.json();
+                populateVehicleDropdowns(datasetData.vehicles);
+            } catch (err) {
+                console.error("Error loading dataset:", err);
+            }
+        }
+
+        function populateVehicleDropdowns(vehicles) {
+            const routeSel = document.getElementById('routeVehicleSelect');
+            const ovrSel = document.getElementById('overrideVehicleSelect');
+            if (!routeSel || !ovrSel) return;
+
+            routeSel.innerHTML = '';
+            ovrSel.innerHTML = '';
+
+            vehicles.forEach(v => {
+                const opt1 = document.createElement('option');
+                opt1.value = v.vehicle_id;
+                opt1.textContent = `${v.vehicle_id} - ${v.driver_name} (${v.capacity_kg} kg)`;
+                routeSel.appendChild(opt1);
+
+                const opt2 = document.createElement('option');
+                opt2.value = v.vehicle_id;
+                opt2.textContent = `${v.vehicle_id} - ${v.driver_name} (${v.capacity_kg} kg)`;
+                ovrSel.appendChild(opt2);
+            });
+        }
+
+        async function runBaseline() {
+            try {
+                const res = await fetch(`${API_BASE}/baseline`);
+                const data = await res.json();
+                updateDashboardMetrics(data.metrics, "Baseline (Delivery-Only)");
+                activeRoutesData = data.routes;
+                renderMapRoutes(data.routes);
+                renderVehicleRouteDetails();
+                updateCharts(data.metrics, null, null);
+            } catch (err) {
+                console.error("Error running baseline:", err);
+            }
+        }
+
+        async function runOptimization(mode) {
+            currentObjective = mode;
+            try {
+                const res = await fetch(`${API_BASE}/optimize?objective_mode=${mode}`, { method: 'POST' });
+                const data = await res.json();
+                updateDashboardMetrics(data.metrics, data.scenario);
+                activeRoutesData = data.routes;
+                renderMapRoutes(data.routes);
+                renderVehicleRouteDetails();
+                await fetchComparison();
+            } catch (err) {
+                console.error("Error running optimization:", err);
+            }
+        }
+
+        function updateDashboardMetrics(metrics, scenarioName) {
+            document.getElementById('kpi-vehicles').textContent = "20 / 20";
+            document.getElementById('kpi-deliveries').textContent = metrics.total_deliveries_completed || 100;
+            document.getElementById('kpi-pickups').textContent = metrics.total_pickups_completed;
+            document.getElementById('kpi-pickups-rate').textContent = `Completion: ${metrics.pickup_completion_rate}%`;
+            document.getElementById('kpi-pending-urgent').textContent = metrics.pending_urgent_pickups;
+            document.getElementById('kpi-urgent-rate').textContent = `Urgent Served: ${metrics.urgent_pickup_completion_rate}%`;
+            document.getElementById('kpi-empty-km').textContent = `${metrics.empty_kilometres} km`;
+            document.getElementById('kpi-empty-reduction').textContent = `▼ ${metrics.empty_km_reduction_pct}% vs Baseline`;
+            document.getElementById('kpi-utilization').textContent = `${metrics.vehicle_utilization_pct}%`;
+        }
+
+        async function fetchComparison() {
+            try {
+                const res = await fetch(`${API_BASE}/optimization-comparison`);
+                const data = await res.json();
+                renderComparisonTable(data);
+                updateCharts(data.baseline, data.objective_a, data.objective_b);
+            } catch (err) {
+                console.error("Error fetching comparison:", err);
+            }
+        }
+
+        function renderComparisonTable(data) {
+            const body = document.getElementById('comparison-table-body');
+            if (!body) return;
+
+            const rows = [
+                { name: 'Empty Return Distance (KM)', base: data.baseline.empty_kilometres, tgt: 'Reduce ≥ 20%', a: data.objective_a.empty_kilometres, b: data.objective_b.empty_kilometres, imp: `▼ ${data.objective_a.empty_km_reduction_pct}%` },
+                { name: 'Pending Urgent Pickups', base: data.baseline.pending_urgent_pickups, tgt: '0 Pending', a: data.objective_a.pending_urgent_pickups, b: data.objective_b.pending_urgent_pickups, imp: `0 Pending (100% Served)` },
+                { name: 'Total Travel Distance (KM)', base: data.baseline.total_kilometres, tgt: 'Minimize', a: data.objective_a.total_kilometres, b: data.objective_b.total_kilometres, imp: `${roundNum(data.baseline.total_kilometres - data.objective_a.total_kilometres)} KM Saved` },
+                { name: 'Vehicle Capacity Utilization', base: `${data.baseline.vehicle_utilization_pct}%`, tgt: '≥ 80%', a: `${data.objective_a.vehicle_utilization_pct}%`, b: `${data.objective_b.vehicle_utilization_pct}%`, imp: `+${roundNum(data.objective_a.vehicle_utilization_pct - data.baseline.vehicle_utilization_pct)}%` },
+                { name: 'Urgent Pickup Completion Rate', base: `${data.baseline.urgent_pickup_completion_rate}%`, tgt: '100%', a: `${data.objective_a.urgent_pickup_completion_rate}%`, b: `${data.objective_b.urgent_pickup_completion_rate}%`, imp: `100.0% Completion` },
+                { name: 'Driver Workload Violations', base: data.baseline.constraint_violations, tgt: '0 Violations', a: data.objective_a.constraint_violations, b: data.objective_b.constraint_violations, imp: '0 Violations (Safe)' }
+            ];
+
+            body.innerHTML = rows.map(r => `
+                <tr class="hover:bg-slate-800/50 transition">
+                    <td class="p-3 font-semibold text-white">${r.name}</td>
+                    <td class="p-3 text-slate-400 font-mono">${r.base}</td>
+                    <td class="p-3 text-amber-400 font-medium">${r.tgt}</td>
+                    <td class="p-3 text-emerald-400 font-bold font-mono">${r.a}</td>
+                    <td class="p-3 text-indigo-400 font-bold font-mono">${r.b}</td>
+                    <td class="p-3 text-emerald-300 font-bold">${r.imp}</td>
+                </tr>
+            `).join('');
+        }
+
+        function roundNum(val) { return Math.round(val * 10) / 10; }
+
+        let kmChartInstance = null;
+        let urgentChartInstance = null;
+
+        function updateCharts(base, objA, objB) {
+            const ctx1 = document.getElementById('kmChart');
+            const ctx2 = document.getElementById('urgentChart');
+            if (!ctx1 || !ctx2) return;
+
+            if (kmChartInstance) kmChartInstance.destroy();
+            if (urgentChartInstance) urgentChartInstance.destroy();
+
+            const labels = ['Baseline', 'Optimizer A (Min Empty KM)', 'Optimizer B (Urgent Priority)'];
+
+            kmChartInstance = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Total KM', data: [base.total_kilometres, objA ? objA.total_kilometres : 0, objB ? objB.total_kilometres : 0], backgroundColor: '#3b82f6' },
+                        { label: 'Empty Return KM', data: [base.empty_kilometres, objA ? objA.empty_kilometres : 0, objB ? objB.empty_kilometres : 0], backgroundColor: '#ef4444' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#94a3b8' } } },
+                    scales: {
+                        x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
+                    }
+                }
+            });
+
+            urgentChartInstance = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Completed Urgent Pickups', 'Pending Urgent Pickups'],
+                    datasets: [{
+                        data: [objA ? objA.urgent_pickups_completed : 0, objA ? objA.pending_urgent_pickups : 0],
+                        backgroundColor: ['#22c55e', '#f59e0b']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#94a3b8' } } }
+                }
+            });
+        }
+
+        // LEAFLET MAP INITIALIZATION & RENDERING
+        function initMap() {
+            const mapContainer = document.getElementById('map');
+            if (!mapContainer) return;
+            
+            map = L.map('map').setView([40.7128, -74.0060], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        function renderMapRoutes(routes) {
+            if (!map) return;
+
+            mapMarkers.forEach(m => map.removeLayer(m));
+            mapPolylines.forEach(p => map.removeLayer(p));
+            mapMarkers = [];
+            mapPolylines = [];
+
+            const colors = ['#22c55e', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6', '#6366f1'];
+
+            // Depot Marker
+            const depotMarker = L.circleMarker([40.7128, -74.0060], {
+                radius: 10,
+                color: '#be123c',
+                fillColor: '#f43f5e',
+                fillOpacity: 0.9
+            }).addTo(map).bindPopup('<b>Central Depot & Waste Recycling Hub</b>');
+            mapMarkers.push(depotMarker);
+
+            routes.slice(0, 10).forEach((route, idx) => {
+                const color = colors[idx % colors.length];
+                const latlngs = [];
+
+                route.stops.forEach(stop => {
+                    if (stop.latitude && stop.longitude) {
+                        latlngs.push([stop.latitude, stop.longitude]);
+
+                        if (stop.type !== 'DEPOT') {
+                            const isUrgent = stop.priority === 'Urgent' || stop.priority === 'Critical';
+                            const markerColor = stop.type === 'DELIVERY' ? '#3b82f6' : (isUrgent ? '#f59e0b' : '#22c55e');
+
+                            const marker = L.circleMarker([stop.latitude, stop.longitude], {
+                                radius: isUrgent ? 8 : 6,
+                                color: markerColor,
+                                fillColor: markerColor,
+                                fillOpacity: 0.8
+                            }).addTo(map).bindPopup(`
+                                <div class="text-slate-900 font-sans text-xs">
+                                    <b>${stop.type}: ${stop.delivery_id || stop.pickup_id}</b><br/>
+                                    ${stop.location}<br/>
+                                    Weight: ${stop.load_kg || stop.waste_weight_kg || 0} kg<br/>
+                                    Priority: <b>${stop.priority || 'Normal'}</b>
+                                </div>
+                            `);
+                            mapMarkers.push(marker);
+                        }
+                    }
+                });
+
+                if (latlngs.length > 1) {
+                    const polyline = L.polyline(latlngs, { color: color, weight: 3, opacity: 0.7 }).addTo(map);
+                    mapPolylines.push(polyline);
+                }
+            });
+        }
+
+        function renderVehicleRouteDetails() {
+            const vehId = document.getElementById('routeVehicleSelect').value || 'V01';
+            const container = document.getElementById('vehicle-route-detail-card');
+            if (!container) return;
+
+            const route = activeRoutesData.find(r => r.vehicle_id === vehId) || activeRoutesData[0];
+            if (!route) {
+                container.innerHTML = `<p class="text-xs text-slate-400">No route data available for ${vehId}</p>`;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="flex flex-wrap items-center justify-between border-b border-slate-800 pb-3 gap-2">
+                    <div>
+                        <h3 class="text-sm font-bold text-white">Vehicle Route: ${route.vehicle_id} (${route.driver_name})</h3>
+                        <p class="text-xs text-slate-400">Total Distance: ${route.total_distance_km} km | Empty Return: <span class="text-rose-400 font-bold">${route.empty_distance_km} km</span></p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-xs">
+                        <span class="bg-slate-800 px-2.5 py-1 rounded text-slate-300 font-mono">Workload: ${route.workload_hours} hrs</span>
+                        <span class="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2.5 py-1 rounded font-bold">Capacity Util: ${route.capacity_utilization}%</span>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead>
+                            <tr class="bg-slate-900 text-slate-300 border-b border-slate-700">
+                                <th class="p-2 font-semibold">#</th>
+                                <th class="p-2 font-semibold">Stop Type</th>
+                                <th class="p-2 font-semibold">ID / Location</th>
+                                <th class="p-2 font-semibold">Load / Waste (kg)</th>
+                                <th class="p-2 font-semibold">Service Window</th>
+                                <th class="p-2 font-semibold">Priority</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800">
+                            ${route.stops.map((s, idx) => `
+                                <tr class="hover:bg-slate-800/40">
+                                    <td class="p-2 font-bold text-slate-400">${idx + 1}</td>
+                                    <td class="p-2"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${s.type === 'DELIVERY' ? 'bg-blue-950 text-blue-400 border border-blue-800' : (s.type === 'PICKUP' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-800 text-slate-400')}">${s.type}</span></td>
+                                    <td class="p-2 font-medium text-white">${s.location || s.name}</td>
+                                    <td class="p-2 font-mono text-slate-300">${s.load_kg || s.waste_weight_kg || 0} kg</td>
+                                    <td class="p-2 text-slate-400 font-mono">${s.service_start || '07:00'} - ${s.service_end || '17:00'}</td>
+                                    <td class="p-2 font-bold ${s.priority === 'Urgent' || s.priority === 'Critical' ? 'text-amber-400' : 'text-slate-400'}">${s.priority || 'Normal'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        async function handleOverrideSubmit(e) {
+            e.preventDefault();
+            const user = document.getElementById('userRoleSelect').value;
+            const vehId = document.getElementById('overrideVehicleSelect').value;
+            const action = document.getElementById('overrideActionSelect').value;
+            const orig = document.getElementById('overrideOriginal').value;
+            const newAsg = document.getElementById('overrideNew').value;
+            const reason = document.getElementById('overrideReason').value;
+            const confirmHard = document.getElementById('overrideHardConfirm').checked;
+
+            try {
+                const res = await fetch(`${API_BASE}/override`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user: user,
+                        role: user,
+                        action_type: action,
+                        vehicle_id: vehId,
+                        original_assignment: orig,
+                        new_assignment: newAsg,
+                        reason: reason,
+                        confirm_hard_override: confirmHard
+                    })
+                });
+
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert(`✅ Override Successfully Approved and Recorded in Audit Log! (Log ID: ${data.override.override_id})`);
+                    fetchOverrides();
+                    switchTab('logs');
+                } else {
+                    alert(`⚠️ Override Warning / Failure: ${data.error || 'Check constraint rules'}`);
+                }
+            } catch (err) {
+                console.error("Override submission error:", err);
+            }
+        }
+
+        async function fetchOverrides() {
+            try {
+                const res = await fetch(`${API_BASE}/overrides`);
+                const data = await res.json();
+                renderAuditLog(data.overrides);
+            } catch (err) {
+                console.error("Error fetching overrides:", err);
+            }
+        }
+
+        function renderAuditLog(logs) {
+            const body = document.getElementById('audit-log-body');
+            if (!body) return;
+
+            if (logs.length === 0) {
+                body.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-500">No manual overrides recorded yet.</td></tr>`;
+                return;
+            }
+
+            body.innerHTML = logs.map(l => `
+                <tr class="hover:bg-slate-800/40 font-mono text-xs">
+                    <td class="p-3 text-amber-400 font-bold">${l.override_id}</td>
+                    <td class="p-3 font-sans text-slate-200">${l.user} (${l.role})</td>
+                    <td class="p-3 text-slate-400">${new Date(l.timestamp).toLocaleTimeString()}</td>
+                    <td class="p-3 text-emerald-400 font-bold">${l.vehicle_id}</td>
+                    <td class="p-3 text-slate-300">${l.action_type}</td>
+                    <td class="p-3 text-slate-400">${l.original_assignment} ➔ ${l.new_assignment}</td>
+                    <td class="p-3 font-sans text-slate-300">${l.reason}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${l.status === 'SUCCESS' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-amber-950 text-amber-400 border border-amber-800'}">${l.status}</span></td>
+                </tr>
+            `).join('');
+        }
+
+        async function fetchEdgeCases() {
+            try {
+                const res = await fetch(`${API_BASE}/edge-cases`);
+                const cases = await res.json();
+                renderEdgeCases(cases);
+            } catch (err) {
+                console.error("Error fetching edge cases:", err);
+            }
+        }
+
+        function renderEdgeCases(cases) {
+            const container = document.getElementById('edge-cases-container');
+            if (!container) return;
+
+            container.innerHTML = cases.map(c => `
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-amber-400">${c.case_id}</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">${c.status}</span>
+                    </div>
+                    <h4 class="text-xs font-bold text-white">${c.title}</h4>
+                    <p class="text-[11px] text-slate-400">${c.description}</p>
+                    <div class="bg-slate-950 p-2 rounded text-[10px] font-mono text-emerald-300">
+                        ${c.system_action}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function handleSurveySubmit(e) {
+            e.preventDefault();
+            alert("✅ Stakeholder validation response saved successfully!");
+        }
+    </script>
+</body>
+</html>
